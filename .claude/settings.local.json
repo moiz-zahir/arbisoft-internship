@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(uv --version)",
+      "PowerShell(powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\")",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv --version)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv init)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv add chromadb openai python-dotenv pydantic pypdf)",
+      "PowerShell($env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; $env:UV_LINK_MODE = \"copy\"; uv add chromadb openai python-dotenv pydantic pypdf)",
+      "WebFetch(domain:openrouter.ai)",
+      "WebSearch",
+      "PowerShell(cd \"C:\\\\Users\\\\Admin\\\\OneDrive\\\\Desktop\\\\arbisoft-internship\\\\week3\"; $env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv run src/rag_demo.py)",
+      "Bash(PATH='C:\\\\Users\\\\Admin/.local/bin:__TRACKED_VAR__' uv run python -c ' *)",
+      "Bash(PATH='C:\\\\Users\\\\Admin/.local/bin:__TRACKED_VAR__' PYTHONIOENCODING=utf-8 uv run python -c ' *)",
+      "PowerShell(cd \"C:\\\\Users\\\\Admin\\\\OneDrive\\\\Desktop\\\\arbisoft-internship\\\\week3\"; $env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv run src/compare_embeddings.py)",
+      "PowerShell(cd \"C:\\\\Users\\\\Admin\\\\OneDrive\\\\Desktop\\\\arbisoft-internship\\\\week3\"; $env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv run src/structured_output.py)",
+      "PowerShell(cd \"C:\\\\Users\\\\Admin\\\\OneDrive\\\\Desktop\\\\arbisoft-internship\\\\week3\"; $env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; $env:UV_LINK_MODE = \"copy\"; uv add --dev pytest)",
+      "PowerShell(cd \"C:\\\\Users\\\\Admin\\\\OneDrive\\\\Desktop\\\\arbisoft-internship\\\\week3\"; $env:Path = \"C:\\\\Users\\\\Admin\\\\.local\\\\bin;$env:Path\"; uv run pytest tests/ -v)"
+    ]
+  }
+}
