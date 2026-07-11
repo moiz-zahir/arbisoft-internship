@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(uv init)",
+      "PowerShell(Get-Command uv -ErrorAction SilentlyContinue; Test-Path \"$env:USERPROFILE\\\\.cargo\\\\bin\\\\uv.exe\"; Test-Path \"$env:USERPROFILE\\\\.local\\\\bin\\\\uv.exe\"; where.exe uv 2>$null)",
+      "PowerShell(pip install uv)",
+      "PowerShell(Get-Command python -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command python3 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command py -ErrorAction SilentlyContinue)",
+      "PowerShell(python --version)",
+      "PowerShell(python -m pip install uv)",
+      "PowerShell(python -m uv --version)",
+      "PowerShell(python -m uv init)",
+      "PowerShell(python -m uv add openai python-dotenv)",
+      "PowerShell(python -m uv add openai python-dotenv --link-mode=copy)",
+      "Bash(curl -s https://openrouter.ai/api/v1/models)",
+      "Bash(python -c ' *)",
+      "Bash(python -m uv run src/chat.py)"
+    ]
+  }
+}
