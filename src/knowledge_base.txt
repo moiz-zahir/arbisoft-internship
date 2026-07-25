@@ -1,0 +1,5 @@
+1. Machine learning is a subset of AI where systems learn patterns from data instead of following explicit rules.
+2. A transformer is a neural network architecture built around self-attention, introduced in the 2017 paper "Attention Is All You Need."
+3. Large language models are trained to predict the next token in a sequence, and this simple objective gives rise to broad language understanding.
+4. Reinforcement learning trains an agent to make decisions by rewarding desired behavior and penalizing undesired behavior.
+5. The Turing Test, proposed by Alan Turing in 1950, evaluates whether a machine's behavior is indistinguishable from a human's.

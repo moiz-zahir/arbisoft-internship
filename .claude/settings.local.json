@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv add *)",
+      "Bash(uv python *)",
+      "Bash(curl -s https://pypi.org/pypi/onnxruntime/json)",
+      "Bash(python3 -c ' *)",
+      "Bash(uv sync *)",
+      "Bash(open -e .env)",
+      "Bash(git check-ignore *)",
+      "Bash(uv run *)"
+    ]
+  }
+}
