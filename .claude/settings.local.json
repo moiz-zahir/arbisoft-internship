@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv add *)",
+      "Bash(uv run *)",
+      "Bash(curl -s https://pypi.org/pypi/onnxruntime/json)",
+      "Bash(python3 -c ' *)",
+      "Bash(open -e .env)",
+      "WebFetch(domain:openrouter.ai)"
+    ]
+  }
+}
