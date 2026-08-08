@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field, ValidationError
 
+from src.agents.model_router import log_model_used
 from src.models.transaction import Transaction, TransactionBatch, TransactionType
 from src.tools.csv_ingestion import load_transactions_csv
 
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 MODEL = "anthropic/claude-haiku-4.5"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
+OLLAMA_MODEL = "llama3"
+
 LOW_CONFIDENCE_THRESHOLD = 0.7
 MAX_RETRIES = 3
 
@@ -64,6 +69,72 @@ def _get_client() -> OpenAI:
     return OpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
 
 
+def _get_local_client() -> OpenAI:
+    # Ollama's OpenAI-compatible endpoint doesn't check the api_key value at
+    # all - it just has to be present for the client library to accept it.
+    return OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+
+
+def _build_messages(transaction: Transaction) -> list[dict]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are a bank transaction categorizer. Given a transaction's "
+                "date, description, amount, and type (debit/credit), call "
+                "categorize_transaction with the best-fit category and your "
+                "confidence in that choice."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"date: {transaction.date}\n"
+                f"description: {transaction.description}\n"
+                f"amount: {transaction.amount}\n"
+                f"type: {transaction.type}"
+            ),
+        },
+    ]
+
+
+def categorize_with_local_model(transaction: Transaction) -> CategorizationResult:
+    """
+    Categorizes a transaction with a local Ollama model (llama3) instead of
+    OpenRouter.
+
+    Routing to a local model trades a bit of accuracy for three things a
+    cloud API can't offer: speed (no network round trip per transaction),
+    cost (a whole statement can be categorized for free instead of billed
+    per token), and privacy (raw transaction descriptions - merchant names,
+    amounts - never leave the machine, which matters for financial data).
+    If Ollama isn't running or the local model errors, we fall straight
+    through to categorize_transaction (the cloud path) rather than failing
+    the transaction outright - the whole point of routing is that a
+    categorization always gets produced somehow.
+    """
+    try:
+        response = _get_local_client().chat.completions.create(
+            model=OLLAMA_MODEL,
+            messages=_build_messages(transaction),
+            tools=[CATEGORIZE_TOOL],
+            tool_choice={"type": "function", "function": {"name": "categorize_transaction"}},
+        )
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            raise RuntimeError("local model did not return a tool call")
+        result = CategorizationResult.model_validate(json.loads(tool_calls[0].function.arguments))
+    except (OpenAIError, RuntimeError, json.JSONDecodeError, ValidationError) as e:
+        logger.warning(
+            "Local model (Ollama) unavailable or failed for %r: %s - falling back to OpenRouter",
+            transaction.description, e,
+        )
+        return categorize_transaction(_get_client(), transaction)
+
+    log_model_used(transaction.description, "local")
+    return result
+
+
 def categorize_transaction(client: OpenAI, transaction: Transaction) -> CategorizationResult:
     """
     Calls Claude Haiku 4.5 (via OpenRouter) with a forced tool call to
@@ -84,26 +155,7 @@ def categorize_transaction(client: OpenAI, transaction: Transaction) -> Categori
     it's always below LOW_CONFIDENCE_THRESHOLD, so it gets flagged for
     review just like a genuinely low-confidence model answer would.
     """
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a bank transaction categorizer. Given a transaction's "
-                "date, description, amount, and type (debit/credit), call "
-                "categorize_transaction with the best-fit category and your "
-                "confidence in that choice."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"date: {transaction.date}\n"
-                f"description: {transaction.description}\n"
-                f"amount: {transaction.amount}\n"
-                f"type: {transaction.type}"
-            ),
-        },
-    ]
+    messages = _build_messages(transaction)
 
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -132,7 +184,9 @@ def categorize_transaction(client: OpenAI, transaction: Transaction) -> Categori
             continue
         try:
             args = json.loads(tool_calls[0].function.arguments)
-            return CategorizationResult.model_validate(args)
+            result = CategorizationResult.model_validate(args)
+            log_model_used(transaction.description, "cloud")
+            return result
         except (json.JSONDecodeError, ValidationError) as e:
             last_error = e
             logger.warning(
@@ -147,14 +201,17 @@ def categorize_transaction(client: OpenAI, transaction: Transaction) -> Categori
     return CategorizationResult(category=TransactionType.OTHER, confidence_score=0.0)
 
 
-def categorize_batch(batch: TransactionBatch) -> TransactionBatch:
+def categorize_batch(batch: TransactionBatch, use_local: bool = False) -> TransactionBatch:
     """Categorizes every transaction in a batch in place and returns it."""
-    client = _get_client()
+    client = None if use_local else _get_client()
     total = len(batch.transactions)
     for i, transaction in enumerate(batch.transactions, start=1):
         print(f"Categorizing transaction {i} of {total}...", file=sys.stderr)
         try:
-            result = categorize_transaction(client, transaction)
+            if use_local:
+                result = categorize_with_local_model(transaction)
+            else:
+                result = categorize_transaction(client, transaction)
         except Exception as e:
             # categorize_transaction already handles the failure modes we
             # anticipate (network errors, bad model output) internally. This

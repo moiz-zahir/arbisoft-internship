@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import sys
 
 from dotenv import load_dotenv
@@ -76,6 +77,41 @@ ANSWER_TOOL = {
         },
     },
 }
+
+
+_DOLLAR_AMOUNT_RE = re.compile(r"\$([\d,]+\.\d{2})")
+
+
+def _correct_dollar_amounts(answer: str, used_transactions: list[UsedTransaction]) -> str:
+    """
+    Replaces any dollar figure in the LLM's answer that isn't one of the
+    actual retrieved transaction amounts with the correct, Python-computed
+    sum of those transactions.
+
+    This project has already hit a real case (see prompts.md) where an LLM
+    asked to total several transactions in prose got the arithmetic wrong by
+    about a dollar, even though every individual amount it cited was
+    correct - it just added them up incorrectly. The fix isn't to ask the
+    model to be more careful; it's to never trust it with the addition at
+    all. A dollar amount that matches one of the known per-transaction
+    amounts is a legitimate citation and is left alone; any other dollar
+    figure in the text is assumed to be an LLM-computed aggregate (right or
+    wrong) and is overwritten with the real total computed here in Python.
+    """
+    if not used_transactions:
+        return answer
+
+    computed_total = sum(t.amount for t in used_transactions)
+    known_amounts = {round(t.amount, 2) for t in used_transactions}
+    correct_str = f"{computed_total:.2f}"
+
+    def _replace(match: re.Match) -> str:
+        value = float(match.group(1).replace(",", ""))
+        if round(value, 2) in known_amounts:
+            return match.group(0)
+        return f"${correct_str}"
+
+    return _DOLLAR_AMOUNT_RE.sub(_replace, answer)
 
 
 def _get_client() -> OpenAI:
@@ -187,7 +223,7 @@ def ask_question(question: str, n_results: int = RETRIEVAL_COUNT) -> QueryAnswer
 
     return QueryAnswer(
         question=question,
-        answer=raw.answer,
+        answer=_correct_dollar_amounts(raw.answer, used_transactions),
         used_transactions=used_transactions,
         confidence_score=raw.confidence_score,
     )

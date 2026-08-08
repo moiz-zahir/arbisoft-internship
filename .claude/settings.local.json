@@ -6,7 +6,9 @@
       "Bash(curl -s https://pypi.org/pypi/onnxruntime/json)",
       "Bash(python3 -c ' *)",
       "Bash(open -e .env)",
-      "WebFetch(domain:openrouter.ai)"
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://localhost:11434)",
+      "Bash(echo \"curl exit: $?\")"
     ]
   }
 }

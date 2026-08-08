@@ -1,72 +1,67 @@
-# week5
+# Personal Finance Assistant
 
-An AI-powered bank statement analyzer. Upload a CSV of bank transactions and use
-LLM-backed agents to categorize spending, detect patterns, and answer natural
-language questions about your finances.
+An AI-powered bank statement analyzer. Feed it a CSV of bank transactions and it
+categorizes your spending, detects patterns and anomalies, answers plain-English
+questions, and writes friendly spending summaries — all backed by Claude Haiku 4.5
+(via OpenRouter), with optional local categorization through Ollama.
 
-## What it does
+📖 **[Usage Guide](docs/USAGE.md)** — installation, running the CLI, example
+questions, using your own CSV, known limitations.
 
-- **Ingestion** — parses uploaded bank statement CSVs into structured transaction records.
-- **Categorization** — an agent classifies each transaction (food, transport, shopping, subscriptions, entertainment, etc.).
-- **Pattern detection** — an agent surfaces recurring charges, spending trends, and anomalies.
-- **Query agent** — ask questions about your transactions in plain English (e.g. "how much did I spend on food last month?").
-- **Storage** — transactions and embeddings are persisted with Chroma for retrieval.
-- **MCP server** — exposes the project's tools/agents over the Model Context Protocol so they can be used from MCP-compatible clients.
-- **CLI** — a command-line entry point for ingesting statements and running queries directly.
+🏗️ **[Architecture](docs/ARCHITECTURE.md)** — system diagram, what each file does,
+how data flows through the pipeline, and why each design decision was made.
+
+## Quick start
+
+```bash
+uv sync
+cp .env.example .env        # then add your OPENROUTER_API_KEY
+uv run python -m src.cli
+```
+
+That's it — the CLI walks you through categorizing the bundled sample statement,
+shows a spending report, and drops you into a menu to ask questions or get a
+summary. See the [Usage Guide](docs/USAGE.md) for details and the CSV format
+needed to use your own bank statement.
 
 ## Project structure
 
 ```
 src/
   agents/
-    categorizer.py       # classifies transactions into categories
-    pattern_detector.py  # finds recurring charges & spending patterns
-    query_agent.py        # answers natural-language questions
+    categorizer.py        # classifies transactions (local Ollama or cloud OpenRouter)
+    model_router.py        # detects whether Ollama is available and routes accordingly
+    pattern_detector.py     # spending totals, top categories, anomalies (Python + LLM narrative)
+    query_agent.py           # RAG-based natural-language Q&A over transactions
+    summarizer.py             # natural-language time-period summaries
   tools/
-    csv_ingestion.py      # parses uploaded bank statement CSVs
-    transaction_store.py  # persists/retrieves transactions (Chroma)
+    csv_ingestion.py          # parses bank statement CSVs
+    transaction_store.py       # persists/retrieves transactions (ChromaDB)
+    validation_guards.py        # batch-level sanity checks
   models/
-    transaction.py        # Pydantic models for transaction data
+    transaction.py               # Pydantic models for transaction data
   mcp/
-    server.py             # MCP server exposing tools/agents
-  cli.py                  # command-line interface
+    server.py                     # FastMCP server exposing resources/tools
+  cli.py                           # interactive command-line interface
 
-data/            # uploaded bank statements go here (gitignored contents)
+data/            # your own bank statements go here (gitignored contents)
 sample_data/     # sample_transactions.csv for testing
+docs/            # USAGE.md and ARCHITECTURE.md
+tests/           # pytest suite
 ```
 
-## Setup
-
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+## Running the test suite
 
 ```bash
-uv sync
+uv run pytest tests/ -v --cov=src --cov-report=term-missing
 ```
 
-Copy `.env.example` to `.env` and fill in your API keys:
+## Running the MCP server
 
 ```bash
-cp .env.example .env
+uv run python -m src.mcp.server
 ```
 
-Required environment variables:
-
-- `OPENROUTER_API_KEY`
-- `ANTHROPIC_API_KEY`
-
-## Running
-
-Run the CLI:
-
-```bash
-uv run src/cli.py
-```
-
-Run the MCP server:
-
-```bash
-uv run src/mcp/server.py
-```
-
-Try it out with the bundled sample data at `sample_data/sample_transactions.csv`,
-or drop your own bank statement CSV into `data/`.
+Exposes `finance://summary` and `finance://transactions` as resources, and
+`query_finances` / `get_category_total` as tools. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what each one does and why.
