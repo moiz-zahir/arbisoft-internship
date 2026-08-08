@@ -1,14 +1,16 @@
 import json
+import logging
 import os
 import sys
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field, ValidationError
 
 from src.tools.transaction_store import query_similar
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 MODEL = "anthropic/claude-haiku-4.5"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -106,7 +108,10 @@ def ask_question(question: str, n_results: int = RETRIEVAL_COUNT) -> QueryAnswer
     retrieved = query_similar(question, n_results=n_results)
     if not retrieved:
         return QueryAnswer(
-            question=question, answer="No transactions found.", used_transactions=[], confidence_score=0.0
+            question=question,
+            answer="No relevant transactions found for that question.",
+            used_transactions=[],
+            confidence_score=0.0,
         )
 
     by_id = {r["id"]: r for r in retrieved}
@@ -118,39 +123,50 @@ def ask_question(question: str, n_results: int = RETRIEVAL_COUNT) -> QueryAnswer
     ]
 
     client = _get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a personal finance assistant. Answer the user's "
-                    "question about their transactions using ONLY the "
-                    "transactions listed below - do not assume or invent any "
-                    "transaction that isn't listed. Each transaction has an "
-                    "is_anomaly flag already computed by a separate pattern-"
-                    "detection step (True means it was unusually large for its "
-                    "category) - treat is_anomaly=True as a strong signal when "
-                    "asked about suspicious or unusual activity. If the listed "
-                    "transactions don't fully answer the question, say so and "
-                    "lower your confidence score accordingly.\n\nTransactions:\n"
-                    + "\n".join(context_lines)
-                ),
-            },
-            {"role": "user", "content": question},
-        ],
-        tools=[ANSWER_TOOL],
-        tool_choice={"type": "function", "function": {"name": "answer_question"}},
-    )
-
-    tool_calls = response.choices[0].message.tool_calls
-    if not tool_calls:
-        raise RuntimeError("model did not return a tool call")
-
     try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a personal finance assistant. Answer the user's "
+                        "question about their transactions using ONLY the "
+                        "transactions listed below - do not assume or invent any "
+                        "transaction that isn't listed. Each transaction has an "
+                        "is_anomaly flag already computed by a separate pattern-"
+                        "detection step (True means it was unusually large for its "
+                        "category) - treat is_anomaly=True as a strong signal when "
+                        "asked about suspicious or unusual activity. If the listed "
+                        "transactions don't fully answer the question, say so and "
+                        "lower your confidence score accordingly.\n\nTransactions:\n"
+                        + "\n".join(context_lines)
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            tools=[ANSWER_TOOL],
+            tool_choice={"type": "function", "function": {"name": "answer_question"}},
+        )
+
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            raise RuntimeError("model did not return a tool call")
+
         raw = _RawAnswer.model_validate(json.loads(tool_calls[0].function.arguments))
-    except (json.JSONDecodeError, ValidationError) as e:
-        raise RuntimeError(f"failed to validate model response: {e}") from e
+    except (OpenAIError, RuntimeError, json.JSONDecodeError, ValidationError) as e:
+        # Covers an unreachable/erroring OpenRouter API, a missing tool
+        # call, and a response that fails validation. Retrieval already
+        # succeeded at this point, but without a trustworthy generation step
+        # we'd rather hand back an honest "couldn't answer" than crash the
+        # whole interactive session over one bad question.
+        logger.error("Failed to answer question %r: %s", question, e)
+        return QueryAnswer(
+            question=question,
+            answer="Sorry, I couldn't generate an answer right now - please try again in a moment.",
+            used_transactions=[],
+            confidence_score=0.0,
+        )
 
     # Defensive resolution: only accept ids that were actually part of the
     # retrieved set. Tool calling constrains the *shape* of the response but

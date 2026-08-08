@@ -1,4 +1,5 @@
 import csv
+import logging
 import sys
 from pathlib import Path
 
@@ -6,11 +7,20 @@ from pydantic import ValidationError
 
 from src.models.transaction import Transaction, TransactionBatch
 
+logger = logging.getLogger(__name__)
+
 REQUIRED_COLUMNS = {"date", "description", "amount", "type"}
 
 
 def load_transactions_csv(path: str | Path) -> TransactionBatch:
     path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"CSV file not found: {path}. Check the path and try again."
+        )
+    if path.stat().st_size == 0:
+        raise ValueError(f"CSV file is empty: {path}")
+
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
 
@@ -19,6 +29,7 @@ def load_transactions_csv(path: str | Path) -> TransactionBatch:
             raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
 
         transactions: list[Transaction] = []
+        skipped_count = 0
         for line_num, row in enumerate(reader, start=2):
             try:
                 transactions.append(
@@ -30,7 +41,14 @@ def load_transactions_csv(path: str | Path) -> TransactionBatch:
                     )
                 )
             except (ValidationError, ValueError, KeyError, AttributeError) as e:
-                print(f"Skipping malformed row {line_num}: {row} ({e})", file=sys.stderr)
+                skipped_count += 1
+                logger.warning("Skipping malformed row %d: %s (%s)", line_num, row, e)
+
+    if skipped_count:
+        logger.warning(
+            "Skipped %d malformed row(s) out of %d total rows in %s",
+            skipped_count, skipped_count + len(transactions), path,
+        )
 
     total_debits = sum(t.amount for t in transactions if t.type == "debit")
     total_credits = sum(t.amount for t in transactions if t.type == "credit")

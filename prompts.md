@@ -103,3 +103,38 @@ A record of every prompt given during this project's build, what was built in re
 **Built:** `src/mcp/server.py` with the two resources and two tools described above. Refactored `pattern_detector.py` to split `format_report()` (returns a string) out of `print_report()` (prints it), so the MCP resource could reuse the same formatting logic instead of duplicating it. This file.
 
 **Outcome:** Server started cleanly in the background (stdio transport, stayed running with no errors or traceback) and was shut down after verification.
+
+---
+
+# Week 6 Prompt Log
+
+## 11. Test suite
+
+**Prompt:** Create a `tests/` folder with `test_csv_ingestion.py`, `test_transaction_models.py`, and `test_transaction_store.py`, plus a `conftest.py` with shared fixtures for sample transactions. Run `pytest tests/ -v` and show the coverage report. Add `pytest-cov` via `uv add --dev pytest-cov` and run with `--cov=src --cov-report=term-missing`.
+
+**Built:** `conftest.py` with `sample_csv_path`, `sample_transactions`, `sample_batch`, and a `chroma_test_dir` fixture that monkeypatches `transaction_store.CHROMA_DB_PATH` to a `tmp_path` so store tests never touch the real `data/chroma_db`. 15 tests total across the three files, covering batch parsing/totals, malformed-row and missing-column handling, model validation edges (bad `type`, out-of-range `confidence_score`, missing required fields), and the store's save/query/filter/clear operations. Added `[tool.pytest.ini_options]` (`testpaths`, `pythonpath`) to `pyproject.toml` for reliable import resolution.
+
+**Outcome:** All 15 tests passed. Coverage came back at 100% for `models/transaction.py`, 79%/74% for `transaction_store.py`/`csv_ingestion.py`, and 0% for the agent/CLI/MCP modules (expected — those need live LLM calls and weren't in scope for this suite). 23% overall, consistent with testing exactly the three modules asked for.
+
+---
+
+## 12. Error handling
+
+**Prompt:** Add proper error handling throughout: `csv_ingestion.py` (clear `FileNotFoundError`/`ValueError` for missing/empty files, log skipped-row counts), `categorizer.py` (catch unreachable-API errors and retry exhaustion, fall back to `OTHER`/0.0 confidence instead of crashing, add a progress indicator), `query_agent.py` (helpful message on empty retrieval, fallback answer if the LLM call fails), `cli.py` (reprompt on a bad CSV path, skip empty questions, catch Ctrl+C gracefully). Add 3 more tests for the new `csv_ingestion.py` error cases and confirm the full suite still passes.
+
+**Built/verified:** By the time this prompt was being worked, an external process had already applied every one of these changes to `csv_ingestion.py`, `categorizer.py`, `cli.py`, and the 3 new tests in `test_csv_ingestion.py` (`test_missing_file_raises_file_not_found_error`, `test_empty_file_raises_value_error`, `test_skipped_row_count_is_logged`) — confirmed by reading each file in full against the request. The one piece not yet done, `query_agent.py`'s error handling (empty-retrieval message, LLM-failure fallback), was also found already implemented on inspection. No new code was needed; the work was to verify each requirement against the actual file contents rather than assume.
+
+**Outcome:** All 18 tests (15 previous + 3 new) passed.
+
+---
+
+## 13. Full CLI demo and prompt log update
+
+**Prompt:** Run the full CLI end-to-end against the sample CSV with 5 demo questions ("how much did I spend on food?", "what are my biggest expenses?", "any suspicious transactions?", "how much did I earn this month?", "what did I spend on subscriptions?"), show the full output including the spending report, then update this file with the Week 6 prompts.
+
+**Built:** Ran `src/cli.py` piping the 5 questions plus `exit` into stdin.
+
+**Outcome:** Full pipeline (load → categorize → store → pattern report) ran cleanly, then all 5 questions were answered with sources and confidence scores. Two pre-existing rough edges resurfaced, both informational rather than newly introduced:
+- The food-spending answer repeated the earlier-known ~$1 LLM arithmetic slip ($176.43 vs. the correct $175.43) — the query agent still sums retrieved amounts itself instead of computing totals in code.
+- The "biggest expenses" answer's numbered list put Whole Foods ($87.32) at #1 and Best Buy ($199.99) at #2, an ordering inconsistency, even though the same answer's prose correctly called Best Buy "the highest single transaction."
+"How much did I earn this month?" correctly excluded the $34.50 Zara refund from earnings (a sensible semantic call, not an error) and summed the two INCOME transactions to $3,850. Subscriptions total ($29.97) was exact.

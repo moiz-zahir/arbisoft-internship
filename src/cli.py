@@ -27,6 +27,20 @@ def run_pipeline(csv_path: str) -> None:
     print_report(report)
 
 
+def load_csv_with_retry(csv_path: str) -> None:
+    """Runs the pipeline against csv_path, reprompting for a new path if it can't be loaded."""
+    while True:
+        try:
+            run_pipeline(csv_path)
+            return
+        except (FileNotFoundError, ValueError) as e:
+            print(f"\nError: {e}")
+            csv_path = input("Enter a valid CSV path (or 'exit' to quit): ").strip()
+            if csv_path.lower() in ("exit", "quit"):
+                print("Goodbye!")
+                sys.exit(0)
+
+
 def interactive_loop() -> None:
     print("\nAsk questions about your transactions (type 'exit' to quit).")
     print(
@@ -39,6 +53,7 @@ def interactive_loop() -> None:
         except EOFError:
             break
         if not question:
+            # Empty input - just prompt again instead of treating it as a question.
             continue
         if question.lower() in ("exit", "quit"):
             break
@@ -48,8 +63,11 @@ def interactive_loop() -> None:
 
 def main() -> None:
     csv_path = sys.argv[1] if len(sys.argv) > 1 else "sample_data/sample_transactions.csv"
-    run_pipeline(csv_path)
-    interactive_loop()
+    try:
+        load_csv_with_retry(csv_path)
+        interactive_loop()
+    except KeyboardInterrupt:
+        print("\n\nGoodbye!")
 
 
 if __name__ == "__main__":

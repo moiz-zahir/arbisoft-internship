@@ -14,3 +14,12 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
